@@ -15,17 +15,31 @@ class AntColonyOptimization:
 
 
 class Grid:
-    def __init__(self, height, width):
+    def __init__(self, height, width, rand_test=True):
+        """
+        This method initializes a grid object. A grid is basically just a 2D array of Datum objects
+        :param height: this is the height of the grid
+        :param width: this is the weight of the grid
+        """
+        # Store the dimensions of the grid
         self.dim = numpy.array([height, width])
+        # Initialize an empty numpy matrix of type Datum
         self.grid = numpy.empty((height, width), dtype=Datum)
-        self.rand_grid(0.15)
-
+        if rand_test:
+            # This is used to fill the grid randomly
+            self.rand_grid(0.15)
+        # This makes the plot redraw
         plt.ion()
         plt.figure(figsize=(10, 10))
+        # Save the initial layout of the grid
         self.plot_grid("images_three/" + "Init.png")
+        self.max_d = 0.0
 
     def rand_grid(self, sparse):
-        self.grid = numpy.empty((self.dim[0], self.dim[1]), dtype=Datum)
+        """
+        A method for randomly initializing the grid
+        :param sparse: the percentage of the grid to fill up
+        """
         for y in range(self.dim[0]):
             for x in range(self.dim[1]):
                 if random.random() <= sparse:
@@ -35,31 +49,78 @@ class Grid:
                         self.grid[y][x] = Datum(nrand.normal(5, 0.5, 10))
 
     def matrix_grid(self):
-        ll = []
+        """
+        This method condenses the grid (2D array of Datum objects) to a matrix which can be visualized
+        :return: matrix of the grid
+        """
+        matrix = numpy.empty((self.dim[0], self.dim[1]))
+        matrix.fill(-1)
         for y in range(self.dim[0]):
-            l = []
             for x in range(self.dim[1]):
                 if self.grid[y][x] is not None:
-                    # x_loc, y_loc, n, c, grid, dim
-                    l.append(self.grid[y][x].density(x, y, 1, 5, self.get_grid(), self.dim))
-                else:
-                    l.append(-1)
-            ll.append(l)
-        m = numpy.matrix(ll)
-        return m
+                    matrix[y][x] = self.get_grid()[y][x].condense()
+        return matrix
 
-    def plot_grid(self, name):
-        # Cool colour map found here - http://wiki.scipy.org/Cookbook/Matplotlib/Show_colormaps
+    def plot_grid(self, name="", save_figure=True):
+        """
+        This plots the 2D representation of the grid
+        :param name: the name of the image to save
+        :return:
+        """
         plt.matshow(self.matrix_grid(), cmap="Greens", fignum=0)
-        plt.savefig(name + '.png')
+        # Option to save images
+        if save_figure:
+            plt.savefig(name + '.png')
         plt.draw()
 
     def get_grid(self):
         return self.grid
 
+    def get_probability(self, d, y, x, n, c):
+        """
+        This gets the probability of drop / pickup for any given Datum, d
+        :param d: the datum
+        :param x: the x location of the datum / ant carrying datum
+        :param y: the y location of the datum / ant carrying datum
+        :param n: the size of the neighbourhood function
+        :param c: constant for convergence control
+        :return: the probability of
+        """
+        # Starting x and y locations
+        y_s = y - n
+        x_s = x - n
+        total = 0.0
+        # For each neighbour
+        for i in range((n*2)+1):
+            xi = (x_s + i) % self.dim[0]
+            for j in range((n*2)+1):
+                # If we are looking at a neighbour
+                if j != x and i != y:
+                    yj = (y_s + j) % self.dim[1]
+                    # Get the neighbour, o
+                    o = self.grid[xi][yj]
+                    # Get the similarity of o to x
+                    if o is not None:
+                        s = d.similarity(o)
+                        total += s
+        # Normalize the density by the max seen distance to date
+        if total > self.max_d:
+            self.max_d = total
+        density = total / (self.max_d * (math.pow((n*2)+1, 2) - 1))
+        density = max(min(density, 1), 0)
+        t = math.exp(-c * density)
+        probability = (1-t)/(1+t)
+        return probability
+
 
 class Ant:
     def __init__(self, y, x, grid):
+        """
+        This initializes an ant object. This Ant class is just a dumb ant with no memory
+        :param y: the y location it is initialized to
+        :param x: the x location it is initialized to
+        :param grid: a reference to the grid
+        """
         self.loc = numpy.array([y, x])
         self.carrying = grid.get_grid()[y][x]
         self.grid = grid
@@ -107,7 +168,7 @@ class Ant:
         :return: probability of picking up
         """
         ant = self.grid.get_grid()[self.loc[0]][self.loc[1]]
-        return 1 - self.density(ant, n, c)
+        return 1 - self.grid.get_probability(ant, self.loc[0], self.loc[1], n, c)
 
     def p_drop(self, n, c):
         """
@@ -115,71 +176,53 @@ class Ant:
         :return: probability of dropping
         """
         ant = self.carrying
-        return self.density(ant, n, c)
-
-    def density(self, dat, n, c):
-        x = self.loc[0] - n
-        y = self.loc[1] - n
-        g = self.grid.get_grid()
-        d = self.grid.dim
-        return dat.density(x, y, n, c, g, d)
-
-
-class Data:
-    def __init__(self):
-        pass
+        return self.grid.get_probability(ant, self.loc[0], self.loc[1], n, c)
 
 
 class Datum:
     def __init__(self, data):
+        """
+        A Datum object is basically just a ND vector
+        :param data: the ND vector
+        """
         self.data = data
 
     def similarity(self, datum):
+        """
+        Returns the sum-squared distance between this datum and some other datum
+        :param datum: the other datum
+        :return: sum squared distance
+        """
         diff = numpy.abs(self.data - datum.data)
         return numpy.sum(diff**2)
 
     def condense(self):
-        return numpy.sum(self.data)
-
-    def bias(self):
-        return numpy.prod(self.data + 1) % 2
-
-    def density(self, x_loc, y_loc, n, c, grid, dim):
-        x = x_loc - n
-        y = y_loc - n
-        total = 0.0
-        for i in range((n*2)+1):
-            xi = (x + i) % dim[0]
-            for j in range((n*2)+1):
-                if j != x_loc and i != y_loc:
-                    yj = (y + j) % dim[1]
-                    o = grid[xi][yj]
-                    if o is not None:
-                        s = self.similarity(o)
-                        total += s
-        density = total / (40 * (math.pow((n*2)+1, 2) - 1))
-        density = max(min(density, 1), 0)
-        t = math.exp(-c * density)
-        probability = (1-t)/(1+t)
-        return probability
+        """
+        A method for condensing ND into 1D for visualization ... many options exist for this
+        :return: the 1D representation of the vector
+        """
+        return numpy.mean(self.data)
 
 
-def main():
-    grid = Grid(50, 50)
-    ants = []
-    for i in range(10):
-        ant = Ant(random.randint(0, 49), random.randint(0, 49), grid)
-        ants.append(ant)
-    for i in range(100000):
+def optimize(height, width, ants, sims, step, c, freq=500, path="images_three/"):
+    """
+    Main method for running the algorithm
+    """
+    # Initialize the grid
+    grid = Grid(height, width)
+    # Create the ants
+    ant_agents = []
+    for i in range(ants):
+        ant = Ant(random.randint(0, height), random.randint(0, width), grid)
+        ant_agents.append(ant)
+    for i in range(sims):
         for ant in ants:
-            ant.move(random.randint(1, 2), 15)
-        if i % 500 == 0:
+            ant.move(step, c)
+        if i % freq == 0:
             print(i)
             s = str(i).zfill(6)
-            grid.plot_grid("images_three/" + s)
-        if i == 100000:
-            grid.plot_grid("images_three/end")
+            grid.plot_grid(path + s)
 
 
 if __name__ == '__main__':
-    main()
+    optimize(50, 50, 10, 100000, 3, 5)
