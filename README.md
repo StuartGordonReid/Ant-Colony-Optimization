@@ -1,2 +1,2 @@
-# Ants
-Repository containing code for visualizing Ant Colony Optimization algorithms for clustering
+# Ant In My Eyes Johnson
+This repository is a code experiment for visualizing the Ant Colony Optimization (ACO) clustering algorithm. 
