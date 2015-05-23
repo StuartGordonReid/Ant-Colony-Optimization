@@ -1,3 +1,4 @@
+import os
 import math
 import time
 import numpy
@@ -15,25 +16,24 @@ class AntColonyOptimization:
 
 
 class Grid:
-    def __init__(self, height, width, rand_test=True):
+    def __init__(self, height, width, path, rand_test=True):
         """
         This method initializes a grid object. A grid is basically just a 2D array of Datum objects
         :param height: this is the height of the grid
         :param width: this is the weight of the grid
         """
+        self.path = path
         # Store the dimensions of the grid
         self.dim = numpy.array([height, width])
         # Initialize an empty numpy matrix of type Datum
         self.grid = numpy.empty((height, width), dtype=Datum)
         if rand_test:
             # This is used to fill the grid randomly
-            self.rand_grid(0.15)
+            self.rand_grid(0.25)
         # This makes the plot redraw
         plt.ion()
         plt.figure(figsize=(10, 10))
-        # Save the initial layout of the grid
-        self.plot_grid("images_three/" + "Init.png")
-        self.max_d = 0.0
+        self.max_d = 0.001
 
     def rand_grid(self, sparse):
         """
@@ -43,10 +43,11 @@ class Grid:
         for y in range(self.dim[0]):
             for x in range(self.dim[1]):
                 if random.random() <= sparse:
-                    if random.randint(0, 1) == 0:
-                        self.grid[y][x] = Datum(nrand.normal(1, 0.5, 10))
-                    else:
-                        self.grid[y][x] = Datum(nrand.normal(5, 0.5, 10))
+                    r = random.randint(0, 1)
+                    if r == 0:
+                        self.grid[y][x] = Datum(nrand.normal(5, 0.25, 10))
+                    elif r == 1:
+                        self.grid[y][x] = Datum(nrand.normal(-5, 0.25, 10))
 
     def matrix_grid(self):
         """
@@ -54,7 +55,7 @@ class Grid:
         :return: matrix of the grid
         """
         matrix = numpy.empty((self.dim[0], self.dim[1]))
-        matrix.fill(-1)
+        matrix.fill(0)
         for y in range(self.dim[0]):
             for x in range(self.dim[1]):
                 if self.grid[y][x] is not None:
@@ -67,11 +68,11 @@ class Grid:
         :param name: the name of the image to save
         :return:
         """
-        plt.matshow(self.matrix_grid(), cmap="Greens", fignum=0)
+        plt.matshow(self.matrix_grid(), cmap="RdBu", fignum=0)
         # Option to save images
         if save_figure:
-            plt.savefig(name + '.png')
-        plt.draw()
+            plt.savefig(self.path + name + '.png')
+        # plt.draw()
 
     def get_grid(self):
         return self.grid
@@ -104,8 +105,9 @@ class Grid:
                         s = d.similarity(o)
                         total += s
         # Normalize the density by the max seen distance to date
-        if total > self.max_d:
-            self.max_d = total
+        md = total / (math.pow((n*2)+1, 2) - 1)
+        if md > self.max_d:
+            self.max_d = md
         density = total / (self.max_d * (math.pow((n*2)+1, 2) - 1))
         density = max(min(density, 1), 0)
         t = math.exp(-c * density)
@@ -130,7 +132,7 @@ class Ant:
         A recursive function for making ants move around the grid
         :param step_size: the size of each step
         """
-        step_size = random.randint(1, 3)
+        step_size = random.randint(1, 25)
         # Add some vector (-1,+1) * step_size to the ants location
         self.loc += nrand.randint(-1 * step_size, 1 * step_size, 2)
         # Mod the new location by the grid size to prevent overflow
@@ -204,25 +206,25 @@ class Datum:
         return numpy.mean(self.data)
 
 
-def optimize(height, width, ants, sims, step, c, freq=500, path="images_three/"):
+def optimize(height, width, ants, sims, n, c, freq=500, path="image"):
     """
     Main method for running the algorithm
     """
     # Initialize the grid
-    grid = Grid(height, width)
+    grid = Grid(height, width, path)
     # Create the ants
     ant_agents = []
     for i in range(ants):
-        ant = Ant(random.randint(0, height), random.randint(0, width), grid)
+        ant = Ant(random.randint(0, height - 1), random.randint(0, width - 1), grid)
         ant_agents.append(ant)
     for i in range(sims):
-        for ant in ants:
-            ant.move(step, c)
+        for ant in ant_agents:
+            ant.move(n, c)
         if i % freq == 0:
             print(i)
-            s = str(i).zfill(6)
-            grid.plot_grid(path + s)
+            s = "img" + str(i).zfill(6)
+            grid.plot_grid(s)
 
 
 if __name__ == '__main__':
-    optimize(50, 50, 10, 100000, 3, 5)
+    optimize(500, 500, 250, 500000, 25, 10, freq=500, path="Video 8/")
